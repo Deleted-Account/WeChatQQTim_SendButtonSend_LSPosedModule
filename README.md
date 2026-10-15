@@ -6,6 +6,12 @@ from a hardware key, an automation app, Tasker, Xposed Edge, `adb`, etc.
 
 [中文说明](README.zh-CN.md)
 
+## Download
+
+Prebuilt APKs are published on the
+[Releases](https://github.com/Deleted-Account/WeChatQQTim_SendButtonSend_LSPosedModule/releases)
+page (debug and release variants). This repository tracks source only.
+
 ## How it works
 
 The module hooks two **system framework methods** (independent of the target

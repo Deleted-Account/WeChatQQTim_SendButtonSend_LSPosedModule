@@ -6,6 +6,12 @@
 
 [English](README.md)
 
+## 下载
+
+预编译 APK 发布在
+[Releases](https://github.com/Deleted-Account/WeChatQQTim_SendButtonSend_LSPosedModule/releases)
+页面（debug / release 两个变体）。本仓库只保留源码，不存放 APK。
+
 ## 工作原理
 
 模块 Hook 两个**系统框架方法**（与目标 App 自身实现无关，抗 App 更新）：

@@ -9,5 +9,8 @@ local.properties
 # 本地交接/开发文档，不上传
 HANDOFF.md
 
+# 构建产物（APK）不上传目录，统一发到 GitHub Releases
+*.apk
+
 # 归档的旧版本产物，本地保留、不上传
 obsoleted/
