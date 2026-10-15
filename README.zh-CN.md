@@ -12,6 +12,27 @@
 [Releases](https://github.com/Deleted-Account/WeChatQQTim_SendButtonSend_LSPosedModule/releases)
 页面（debug / release 两个变体）。本仓库只保留源码，不存放 APK。
 
+## 为什么有这个模块
+
+用 Scrcpy（UHID 键盘模式）可以直接用 PC 键盘往手机聊天输入框里打字，
+但屏幕上的 **send（发送）按钮没法用这种方式点**。本模块就是针对这个问题的
+workaround：照常用 scrcpy 打字，然后发一条广播，以编程方式点到真正的发送按钮。
+
+## 推荐搭配
+
+- **输入法：[Fcitx5 for Android](https://github.com/fcitx5-android/fcitx5-android)**——
+  手机上的中英文输入，与 scrcpy 打字场景很配。
+- **触发：Xposed Edge Pro**（Root 可选），建议绑两个键（Shell command）：
+
+| 用途 | 命令 |
+|---|---|
+| 发送打好的消息（建议绑 F12，与 scrcpy 不冲突） | `am broadcast -a com.anonymous.sendbuttonsend.SEND` |
+| 切换中 / 英文输入 | `IME=org.fcitx.fcitx5.android/.input.FcitxInputMethodService; PY=-988136023; EN=283797060; cur=$(settings get secure selected_input_method_subtype); if [ "$cur" = "$PY" ]; then tgt=$EN; else tgt=$PY; fi; settings put secure selected_input_method_subtype $tgt; ime set $IME` |
+
+`PY` / `EN` 是输入法子类型 ID，各设备可能不同。如果切换不生效，
+在拼音模式和英文模式下分别执行
+`settings get secure selected_input_method_subtype` 读取当前 ID，替换成你自己设备的值。
+
 ## 工作原理
 
 模块 Hook 两个**系统框架方法**（与目标 App 自身实现无关，抗 App 更新）：

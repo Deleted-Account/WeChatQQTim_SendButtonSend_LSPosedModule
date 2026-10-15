@@ -12,6 +12,30 @@ Prebuilt APKs are published on the
 [Releases](https://github.com/Deleted-Account/WeChatQQTim_SendButtonSend_LSPosedModule/releases)
 page (debug and release variants). This repository tracks source only.
 
+## Why this module
+
+Scrcpy (with UHID keyboard) lets you type into the phone's chat input box straight
+from your PC keyboard — but the on-screen **send** button cannot be clicked that
+way. This module is the workaround for that: keep typing with scrcpy, then fire
+one broadcast to hit the real send button programmatically.
+
+## Recommended setup
+
+- **IME: [Fcitx5 for Android](https://github.com/fcitx5-android/fcitx5-android)** —
+  Chinese/English input on the phone, pairs well with scrcpy typing.
+- **Trigger: Xposed Edge Pro** (Root access optional), two suggested key bindings
+  (Shell command):
+
+| Purpose | Command |
+|---|---|
+| Send the typed message (suggested: F12 — does not conflict with scrcpy) | `am broadcast -a com.anonymous.sendbuttonsend.SEND` |
+| Toggle pinyin / English input | `IME=org.fcitx.fcitx5.android/.input.FcitxInputMethodService; PY=-988136023; EN=283797060; cur=$(settings get secure selected_input_method_subtype); if [ "$cur" = "$PY" ]; then tgt=$EN; else tgt=$PY; fi; settings put secure selected_input_method_subtype $tgt; ime set $IME` |
+
+`PY` / `EN` are IME subtype IDs and can differ per device. If the toggle does not
+switch input, read the current ID with
+`settings get secure selected_input_method_subtype` while in pinyin mode and in
+English mode, and substitute your own values.
+
 ## How it works
 
 The module hooks two **system framework methods** (independent of the target
