@@ -1,0 +1,13 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+.DS_Store
+
+# 本地交接/开发文档，不上传
+HANDOFF.md
+
+# 归档的旧版本产物，本地保留、不上传
+obsoleted/

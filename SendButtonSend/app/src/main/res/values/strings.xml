@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SendButtonSend</string>
+    <string name="module_description">微信/QQ/Tim 发送按钮广播触发</string>
+</resources>
