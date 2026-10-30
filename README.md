@@ -133,15 +133,20 @@ be installed over the other with `adb install -r`):
 ## After (re)installing
 
 On Vector, the module's in-memory registry still points at the old APK path
-after a reinstall, so re-enable it:
+after a reinstall, so re-enable it, then force-stop **all** target apps so their
+processes restart with the new code:
 
 ```sh
 adb shell "su -c '/data/adb/lspd/cli modules disable com.anonymous.sendbuttonsend'"
 adb shell "su -c '/data/adb/lspd/cli modules enable com.anonymous.sendbuttonsend'"
 adb shell am force-stop com.tencent.mm
+adb shell am force-stop com.tencent.mobileqq
+adb shell am force-stop com.tencent.tim
 ```
 
-Then relaunch the target apps so they pick up the new code.
+> If an app does not relaunch cleanly after force-stop (some apps' launcher
+> activity cannot be resolved by `am start`), just **reboot the phone** — that
+> is the most reliable way to reload the module into every target process.
 
 ## Notes & limitations
 

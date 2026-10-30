@@ -120,15 +120,20 @@ JAVA_HOME=/usr/lib/jvm/java-17-temurin-jdk ANDROID_HOME=~/Android/Sdk ./gradlew 
 
 ## 重装模块后
 
-Vector 上重装 APK 后内存注册表仍指向旧路径，广播会无响应，需要重新挂载：
+Vector 上重装 APK 后内存注册表仍指向旧路径，广播会无响应，需要重新挂载，
+然后 force-stop **所有**目标 App，让进程重启加载新代码：
 
 ```sh
 adb shell "su -c '/data/adb/lspd/cli modules disable com.anonymous.sendbuttonsend'"
 adb shell "su -c '/data/adb/lspd/cli modules enable com.anonymous.sendbuttonsend'"
 adb shell am force-stop com.tencent.mm
+adb shell am force-stop com.tencent.mobileqq
+adb shell am force-stop com.tencent.tim
 ```
 
-然后重新打开目标 App 加载新代码。
+> 如果 force-stop 后某个 App 无法正常重新拉起（部分 App 的启动 Activity
+> 无法被 `am start` 解析，如 Tim），直接**重启手机**即可——这是让模块
+> 重新加载进所有目标进程最稳妥的方式。
 
 ## 注意事项
 
