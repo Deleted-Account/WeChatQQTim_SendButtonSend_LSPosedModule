@@ -40,7 +40,7 @@ English mode, and substitute your own values.
 
 ## How it works
 
-The module hooks three **system framework methods** (independent of the target
+The module hooks several **system framework methods** (independent of the target
 app's own implementation, so it survives app updates):
 
 | Hook | Purpose |
@@ -48,15 +48,24 @@ app's own implementation, so it survives app updates):
 | `android.app.Application#onCreate` | Register an exported broadcast receiver for `com.anonymous.sendbuttonsend.SEND` |
 | `android.app.Activity#onResume` | Track the current foreground activity |
 | `android.app.Activity#dispatchKeyEvent` | Detect **F12 double-tap** inside the app and fire the send directly |
+| `android.app.Dialog#show` / `#dismiss` | Track active Dialogs' `DecorView`s (for forwarding panels that live in a separate window) |
+| `android.app.Dialog#dispatchKeyEvent` | Detect **F12 double-tap** while a Dialog has focus (e.g. the WeChat forwarding panel) |
 
 > The F12 hook runs inside the target app process, so it works even on systems
 > (e.g. OPPO/Realme ColorOS "restrict listen mode") that block F12 from reaching
 > external key listeners like Xposed Edge. The broadcast receiver is kept for
 > `adb` / automation use.
 
-On broadcast, it walks the activity's `DecorView`, collects send-button
-candidates, filters by `isShown() && isEnabled() && isClickable()`, and calls
-`performClick()` on the first real match.
+When triggered, it walks **all active root views** (the activity's `DecorView`
+plus every tracked Dialog `DecorView`), collects send-button candidates,
+filters by `isShown() && isEnabled() && isClickable()`, and calls
+`performClick()` on the best match.
+
+**Forwarding support (WeChat):** the forwarding confirmation panel is a Dialog
+with two "Send" buttons — the input-bar Send and the forwarding-confirm Send.
+The module prefers the button whose parent container does **not** contain an
+`EditText` (i.e. the forwarding-confirm Send), falling back to the first
+visible candidate when only the input-bar Send exists (normal chat page).
 
 **Foreground judgment lives in the module, not in your command.** The broadcast
 is delivered to every process of every scoped app; each process decides for

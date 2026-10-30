@@ -37,20 +37,27 @@ IME=org.fcitx.fcitx5.android/.input.FcitxInputMethodService; PY=-988136023; EN=2
 
 ## 工作原理
 
-模块 Hook 三个**系统框架方法**（与目标 App 自身实现无关，抗 App 更新）：
+模块 Hook 若干**系统框架方法**（与目标 App 自身实现无关，抗 App 更新）：
 
 | Hook | 用途 |
 |---|---|
 | `android.app.Application#onCreate` | 注册导出的广播接收器，监听 `com.anonymous.sendbuttonsend.SEND` |
 | `android.app.Activity#onResume` | 跟踪当前前台 Activity |
 | `android.app.Activity#dispatchKeyEvent` | 在 App 内部检测 **F12 双击**，直接触发发送 |
+| `android.app.Dialog#show` / `#dismiss` | 追踪已显示 Dialog 的 `DecorView`（转发确认面板等独立窗口） |
+| `android.app.Dialog#dispatchKeyEvent` | Dialog 获焦时也能检测 **F12 双击**（如微信转发面板） |
 
 > F12 的 Hook 运行在目标 App 进程内部，所以即使系统（如 OPPO/Realme
 > ColorOS 的"限制监听模式"）阻止 F12 投递到 Xposed Edge 等外部按键监听，
 > 它依然能工作。广播接收器保留给 `adb` / 自动化场景使用。
 
-收到广播后遍历前台 Activity 的 `DecorView`，收集发送按钮候选，
-按 `isShown() && isEnabled() && isClickable()` 过滤后 `performClick()`。
+触发时遍历**所有活跃根 View**（Activity 的 `DecorView` + 所有已追踪 Dialog 的
+`DecorView`），收集发送按钮候选，按 `isShown() && isEnabled() && isClickable()`
+过滤后对最佳候选 `performClick()`。
+
+**转发支持（微信）**：转发确认面板是一个 Dialog，上面有两个"Send"——
+输入框 Send 和转发确认 Send。模块优先选择**父容器不含 `EditText`** 的那个
+（即转发确认 Send）；若只有输入框 Send（正常聊天页），则回退选第一个可见候选。
 
 **前台判断在模块侧做，命令侧不管**。广播会发给所有作用域 App 的所有进程，
 每个进程自己决定是否响应（非目标包直接 return，没有前台 Activity 的进程跳过）。

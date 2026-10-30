@@ -1,6 +1,7 @@
 package com.anonymous.sendbuttonsend;
 
 import android.app.Activity;
+import android.app.Dialog;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -9,14 +10,18 @@ import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import io.github.libxposed.api.XposedModule;
@@ -44,6 +49,11 @@ public class MainHook extends XposedModule {
     private static volatile long sLastF12DownTime = 0L;
     /** F12 双击间隔阈值（毫秒）。 */
     private static final long F12_DOUBLE_CLICK_INTERVAL_MS = 500L;
+
+    /** 已 show 的 Dialog 及其 DecorView。转发等场景的发送按钮位于 Dialog 窗口内，
+     *  不在 Activity 的 DecorView 里，需要额外追踪。dismiss 时移除。 */
+    private static final Map<Dialog, View> sDialogDecorViews =
+            Collections.synchronizedMap(new HashMap<>());
 
     @Override
     public void onModuleLoaded(ModuleLoadedParam param) {
@@ -116,9 +126,10 @@ public class MainHook extends XposedModule {
             // 原因：OPPO/真我系统的 "restrict listen mode" 会拦截 F12 等"未定义键"，
             // 导致 Edge Pro 等外部按键监听器收不到 F12。但 F12 仍会投递到前台 Activity，
             // 所以在 App 进程内 hook dispatchKeyEvent 可绕过该限制。
-            Method dispatchKeyEvent = activityClass.getDeclaredMethod("dispatchKeyEvent", KeyEvent.class);
-            dispatchKeyEvent.setAccessible(true);
-            hook(dispatchKeyEvent)
+            Method activityDispatchKeyEvent = activityClass.getDeclaredMethod(
+                    "dispatchKeyEvent", KeyEvent.class);
+            activityDispatchKeyEvent.setAccessible(true);
+            hook(activityDispatchKeyEvent)
                     .setExceptionMode(ExceptionMode.PROTECTIVE)
                     .intercept(chain -> {
                         Object result = chain.proceed();
@@ -126,20 +137,61 @@ public class MainHook extends XposedModule {
                         List<Object> args = chain.getArgs();
                         if (thisObj instanceof Activity && args != null && !args.isEmpty()
                                 && args.get(0) instanceof KeyEvent) {
-                            KeyEvent ev = (KeyEvent) args.get(0);
-                            if (ev.getKeyCode() == KeyEvent.KEYCODE_F12
-                                    && ev.getAction() == KeyEvent.ACTION_DOWN) {
-                                long now = System.currentTimeMillis();
-                                long last = sLastF12DownTime;
-                                if (last > 0 && now - last <= F12_DOUBLE_CLICK_INTERVAL_MS) {
-                                    // 双击 F12：触发发送
-                                    sLastF12DownTime = 0L;
-                                    log(Log.INFO, TAG, "F12 double-click -> send");
-                                    clickSendButton();
-                                } else {
-                                    sLastF12DownTime = now;
+                            handleKeyEvent((KeyEvent) args.get(0));
+                        }
+                        return result;
+                    });
+
+            // ---- Dialog 支持：转发等场景的 UI 在独立 Dialog 窗口内 ----
+            Class<?> dialogClass = Class.forName("android.app.Dialog", false, cl);
+
+            // Hook Dialog.show / dismiss：追踪已显示 Dialog 的 DecorView，
+            // 以便在搜索发送按钮时覆盖 Dialog 窗口（全用公开 API，不反射隐藏字段）。
+            Method dialogShow = dialogClass.getDeclaredMethod("show");
+            dialogShow.setAccessible(true);
+            hook(dialogShow)
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        Object thisObj = chain.getThisObject();
+                        if (thisObj instanceof Dialog) {
+                            try {
+                                View decor = ((Dialog) thisObj).getWindow().getDecorView();
+                                if (decor != null) {
+                                    sDialogDecorViews.put((Dialog) thisObj, decor);
                                 }
+                            } catch (Throwable ignored) {
                             }
+                        }
+                        return result;
+                    });
+
+            Method dialogDismiss = dialogClass.getDeclaredMethod("dismiss");
+            dialogDismiss.setAccessible(true);
+            hook(dialogDismiss)
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object thisObj = chain.getThisObject();
+                        if (thisObj instanceof Dialog) {
+                            sDialogDecorViews.remove(thisObj);
+                        }
+                        return chain.proceed();
+                    });
+
+            // Hook Dialog.dispatchKeyEvent：Dialog 显示时按键走 Dialog 通道，
+            // Activity.dispatchKeyEvent 不会被调用，必须在这里也捕获 F12。
+            Method dialogDispatchKeyEvent = dialogClass.getDeclaredMethod(
+                    "dispatchKeyEvent", KeyEvent.class);
+            dialogDispatchKeyEvent.setAccessible(true);
+            hook(dialogDispatchKeyEvent)
+                    .setExceptionMode(ExceptionMode.PROTECTIVE)
+                    .intercept(chain -> {
+                        Object result = chain.proceed();
+                        Object thisObj = chain.getThisObject();
+                        List<Object> args = chain.getArgs();
+                        if (thisObj instanceof Dialog && args != null && !args.isEmpty()
+                                && args.get(0) instanceof KeyEvent) {
+                            handleKeyEvent((KeyEvent) args.get(0));
                         }
                         return result;
                     });
@@ -150,29 +202,101 @@ public class MainHook extends XposedModule {
         }
     }
 
+    /**
+     * 处理按键事件：检测 F12 双击并触发发送。
+     * Activity 和 Dialog 的 dispatchKeyEvent 共用此逻辑。
+     */
+    private static void handleKeyEvent(KeyEvent ev) {
+        if (ev.getKeyCode() == KeyEvent.KEYCODE_F12
+                && ev.getAction() == KeyEvent.ACTION_DOWN) {
+            long now = System.currentTimeMillis();
+            long last = sLastF12DownTime;
+            if (last > 0 && now - last <= F12_DOUBLE_CLICK_INTERVAL_MS) {
+                sLastF12DownTime = 0L;
+                Log.i(TAG, "F12 double-click -> send");
+                clickSendButton();
+            } else {
+                sLastF12DownTime = now;
+            }
+        }
+    }
+
     private static void clickSendButton() {
+        // 收集所有需要搜索的根 View：Activity 的 DecorView + 所有已显示 Dialog 的 DecorView
+        List<View> roots = new ArrayList<>();
         Activity act = sCurrentActivity;
-        if (act == null) {
-            Log.w(TAG, "no current activity");
+        if (act != null) {
+            roots.add(act.getWindow().getDecorView());
+        }
+        synchronized (sDialogDecorViews) {
+            roots.addAll(sDialogDecorViews.values());
+        }
+        if (roots.isEmpty()) {
+            Log.w(TAG, "no current activity or dialog");
             return;
         }
-        View root = act.getWindow().getDecorView();
+
         List<View> cands = new ArrayList<>();
-        collectSendCandidates(root, cands);
-        View best = null;
+        for (View root : roots) {
+            collectSendCandidates(root, cands);
+        }
+
+        List<View> visible = new ArrayList<>();
         for (View v : cands) {
             if (v.isShown() && v.isEnabled() && v.isClickable()) {
+                visible.add(v);
+            }
+        }
+        if (visible.isEmpty()) {
+            Log.w(TAG, "no visible send button (" + cands.size() + " candidate(s))");
+            for (View root : roots) {
+                dumpViewTree(root, 0);
+            }
+            return;
+        }
+
+        // 多个候选时（如转发页同时有"输入框 Send"和"转发确认 Send"），
+        // 优先选不在输入栏里的那个——其父容器不含 EditText 后代。
+        View best = null;
+        for (View v : visible) {
+            if (!isInInputBar(v)) {
                 best = v;
                 break;
             }
         }
         if (best == null) {
-            Log.w(TAG, "no visible send button (" + cands.size() + " candidate(s))");
-            dumpViewTree(root, 0);
-            return;
+            best = visible.get(0);
         }
+
         best.performClick();
         Log.i(TAG, "sent via " + describe(best));
+    }
+
+    /**
+     * 判断按钮是否位于输入栏内。
+     * 向上遍历父容器，遇到第一个含多个子 View 的"实际容器"为止；
+     * 若该容器含 EditText 后代，说明按钮与输入框同栏（即输入框 Send）。
+     */
+    private static boolean isInInputBar(View button) {
+        ViewParent p = button.getParent();
+        while (p instanceof View) {
+            View pv = (View) p;
+            if (hasEditTextDescendant(pv)) return true;
+            if (pv instanceof ViewGroup && ((ViewGroup) pv).getChildCount() > 1) break;
+            p = pv.getParent();
+        }
+        return false;
+    }
+
+    private static boolean hasEditTextDescendant(View view) {
+        if (view instanceof EditText) return true;
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                if (hasEditTextDescendant(group.getChildAt(i))) return true;
+            }
+        }
+        return false;
     }
 
     private static void dumpCurrentViewTree() {
