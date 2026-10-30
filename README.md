@@ -1,8 +1,9 @@
 # SendButtonSend
 
 An Xposed (LSPosed / libxposed API 102) module that triggers the **send button** in
-WeChat / QQ / Tim chat pages with a single broadcast — so you can send a message
-from a hardware key, an automation app, Tasker, Xposed Edge, `adb`, etc.
+WeChat / QQ / Tim chat pages. **Double-tap F12** on a chat page and the message
+goes out — no external key-mapper required. A broadcast trigger is also available
+for `adb`, automation apps, Tasker, etc.
 
 [中文说明](README.zh-CN.md)
 
@@ -23,13 +24,14 @@ one broadcast to hit the real send button programmatically.
 
 - **IME: [Fcitx5 for Android](https://github.com/fcitx5-android/fcitx5-android)** —
   Chinese/English input on the phone, pairs well with scrcpy typing.
-- **Trigger: Xposed Edge Pro** (Root access optional), two suggested key bindings
-  (Shell command):
+- **Send trigger: built-in** — just **double-tap F12** on any scoped chat page.
+  No extra app needed. (F12 does not conflict with scrcpy.)
+- **IME toggle (optional): Xposed Edge Pro** (Root access optional), bind a key
+  (e.g. F10) to this Shell command:
 
-| Purpose | Command |
-|---|---|
-| Send the typed message (suggested: F12 — does not conflict with scrcpy) | `am broadcast -a com.anonymous.sendbuttonsend.SEND` |
-| Toggle pinyin / English input | `IME=org.fcitx.fcitx5.android/.input.FcitxInputMethodService; PY=-988136023; EN=283797060; cur=$(settings get secure selected_input_method_subtype); if [ "$cur" = "$PY" ]; then tgt=$EN; else tgt=$PY; fi; settings put secure selected_input_method_subtype $tgt; ime set $IME` |
+```sh
+IME=org.fcitx.fcitx5.android/.input.FcitxInputMethodService; PY=-988136023; EN=283797060; cur=$(settings get secure selected_input_method_subtype); if [ "$cur" = "$PY" ]; then tgt=$EN; else tgt=$PY; fi; settings put secure selected_input_method_subtype $tgt; ime set $IME
+```
 
 `PY` / `EN` are IME subtype IDs and can differ per device. If the toggle does not
 switch input, read the current ID with
@@ -38,13 +40,19 @@ English mode, and substitute your own values.
 
 ## How it works
 
-The module hooks two **system framework methods** (independent of the target
+The module hooks three **system framework methods** (independent of the target
 app's own implementation, so it survives app updates):
 
 | Hook | Purpose |
 |---|---|
 | `android.app.Application#onCreate` | Register an exported broadcast receiver for `com.anonymous.sendbuttonsend.SEND` |
 | `android.app.Activity#onResume` | Track the current foreground activity |
+| `android.app.Activity#dispatchKeyEvent` | Detect **F12 double-tap** inside the app and fire the send directly |
+
+> The F12 hook runs inside the target app process, so it works even on systems
+> (e.g. OPPO/Realme ColorOS "restrict listen mode") that block F12 from reaching
+> external key listeners like Xposed Edge. The broadcast receiver is kept for
+> `adb` / automation use.
 
 On broadcast, it walks the activity's `DecorView`, collects send-button
 candidates, filters by `isShown() && isEnabled() && isClickable()`, and calls
@@ -76,8 +84,14 @@ Each app implements its send button differently, so matching is per-package:
 The module must be enabled in LSPosed with scope covering the target apps
 (`com.tencent.mm` / `com.tencent.mobileqq` / `com.tencent.tim`).
 
-Send a message (you must be **on a chat page with text typed and the send
-button visible**):
+### Send with F12 (built-in)
+
+On a chat page, type your message, then **double-tap F12**. The module catches
+the key inside the app and clicks the real send button. No external app needed.
+
+### Send with broadcast (for `adb` / automation)
+
+You must be **on a chat page with text typed and the send button visible**:
 
 ```sh
 adb shell am broadcast -a com.anonymous.sendbuttonsend.SEND
@@ -91,13 +105,8 @@ adb shell am broadcast -a com.anonymous.sendbuttonsend.DUMP
 adb logcat -s SendButtonSend
 ```
 
-Xposed Edge Pro: `Keys -> any key -> Shell command` (Root access optional):
-
-```sh
-am broadcast -a com.anonymous.sendbuttonsend.SEND
-```
-
-Do **not** add `-p <package>` or foreground checks — the module already filters.
+> Do **not** add `-p <package>` or foreground checks to the broadcast — the
+> module already filters by package and foreground activity.
 
 ## Requirements
 
@@ -124,15 +133,15 @@ be installed over the other with `adb install -r`):
 ## After (re)installing
 
 On Vector, the module's in-memory registry still points at the old APK path
-after a reinstall, so re-enable it (run on the phone, `su` from adb shell
-fails):
+after a reinstall, so re-enable it:
 
 ```sh
-su -c "/data/adb/lspd/cli modules disable com.anonymous.sendbuttonsend"
-su -c "/data/adb/lspd/cli modules enable com.anonymous.sendbuttonsend"
+adb shell "su -c '/data/adb/lspd/cli modules disable com.anonymous.sendbuttonsend'"
+adb shell "su -c '/data/adb/lspd/cli modules enable com.anonymous.sendbuttonsend'"
+adb shell am force-stop com.tencent.mm
 ```
 
-Then force-stop and relaunch the target apps so they pick up the new code.
+Then relaunch the target apps so they pick up the new code.
 
 ## Notes & limitations
 
